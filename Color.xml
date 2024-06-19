@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+	<color name="primary_color">#C9001C</color>
+	<color name="button_color">#C9001C</color>
+	<color name="semi_transparentcolor_primary">#E6E9E6E0</color>
+	<color name="font_color">#666666</color>
+	<color name="barcode_success_color">#008000</color>
+  <color name="color_action_bar">#FFFFFF</color>
+
+	<color name="cirrus_red_color">#c60c35</color>
+	<color name="cirrus_trans_color">#00000000</color>
+	<color name="cirrus_shadow_color">#00000000</color>
+</resources>

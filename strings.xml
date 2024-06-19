@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">GMVisionAndroid</string>
+    <string name="app_text">Hello, Android!</string>
+    <string name="scan_result">scanresult</string>
+
+</resources>
