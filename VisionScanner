@@ -1,0 +1,169 @@
+using System;
+using System.Drawing;
+using System.Reflection.Metadata.Ecma335;
+using AVFoundation;
+using CoreAnimation;
+using CoreFoundation;
+using CoreMedia;
+using CoreVideo;
+using UIKit;
+using Vision;
+
+public class ScanViewController1 : UIViewController//, IAVCaptureVideoDataOutputSampleBufferDelegate
+{
+    private readonly AVCaptureSession captureSession = new AVCaptureSession();
+    private readonly AVCaptureVideoPreviewLayer previewLayer;
+    private readonly AVCaptureVideoDataOutput videoOutput = new AVCaptureVideoDataOutput();
+    private readonly VNSequenceRequestHandler sequenceHandler = new VNSequenceRequestHandler();
+ UILabel resultLabel;
+    public ScanViewController1()
+    {
+        previewLayer = new AVCaptureVideoPreviewLayer(captureSession)
+        {
+            VideoGravity = AVLayerVideoGravity.ResizeAspect
+        };
+    }
+
+    public override void ViewDidLoad()
+    {
+        base.ViewDidLoad();
+        AddCameraInput();
+        AddPreviewLayer();
+        AddVideoOutput();
+        captureSession.StartRunning();
+
+        resultLabel = new UILabel(){Text="Result Will be here",Frame = View.Frame,BackgroundColor = UIColor.Clear,TextColor = UIColor.White};
+    }
+
+    public override void ViewDidLayoutSubviews()
+    {
+        base.ViewDidLayoutSubviews();
+        previewLayer.Frame = View.Bounds;
+    }
+
+    // public  void DidOutputSampleBuffer(AVCaptureOutput output, CMSampleBuffer sampleBuffer, AVCaptureConnection connection)
+    // {
+    //     var frame = sampleBuffer.GetImageBuffer();
+    //     if (frame == null)
+    //     {
+    //         Console.WriteLine("unable to get image from sample buffer");
+    //         return;
+    //     }
+    //     var barcode = ExtractQRCode(frame);
+    //     if (barcode != null)
+    //     {
+    //         Console.WriteLine($"did extract barcode {barcode}");
+    //         // Uncomment to show alert
+    //         // var alert = UIAlertController.Create("Barcode", $"Value : {barcode}", UIAlertControllerStyle.Alert);
+    //         // alert.AddAction(UIAlertAction.Create("Ok", UIAlertActionStyle.Default, null));
+    //         // PresentViewController(alert, true, null);
+    //     }
+    // }
+
+   private string ExtractQRCode(CVImageBuffer frame)
+    {
+        var barcodeRequest = new VNDetectBarcodesRequest((result,error)=>{
+
+            Console.WriteLine(result.ToString());
+             result.ToString();
+            //var res =  result != null && result.Length > 0 ? results[0].PayloadStringValue : null;
+        });
+
+       
+      barcodeRequest.Symbologies = new[] { VNBarcodeSymbology.QR, VNBarcodeSymbology.Code39 };
+       NSError error;
+        try
+        {
+            sequenceHandler.Perform(new[] { barcodeRequest }, (CVPixelBuffer)frame, out error);
+         var test = barcodeRequest.Results.First().PayloadStringValue.ToString();
+        //   BeginInvokeOnMainThread(()=>resultLabel.Text = test);  
+            return error.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+       // var results = barcodeRequest.Results;
+       // return results != null && results.Length > 0 ? results[0].PayloadStringValue : null;
+    }
+
+    private void AddCameraInput()
+    {
+        var device = AVCaptureDevice.GetDefaultDevice(AVMediaTypes.Video);
+        ConfigureCameraForDevice(device);
+        var cameraInput = AVCaptureDeviceInput.FromDevice(device);
+        captureSession.AddInput(cameraInput);
+
+     
+    }
+
+    private void AddPreviewLayer()
+    {
+        View.Layer.AddSublayer(previewLayer);
+    //   View.AddSubview(resultLabel);
+       
+    }
+
+    private void AddVideoOutput()
+    {
+
+        var videoSettingsDict = new NSMutableDictionary ();
+		videoSettingsDict.Add (CVPixelBuffer.PixelFormatTypeKey, NSNumber.FromUInt32((uint)CVPixelFormatType.CV32BGRA));			
+        videoOutput.WeakVideoSettings = videoSettingsDict;
+       // videoOutput.SetSampleBufferDelegate(this, new DispatchQueue("my.image.handling.queue"));
+      
+
+         //  var aVCaptureVideoDataOutput = new AVCaptureVideoDataOutput();
+        videoOutput.SetSampleBufferDelegate(new MyVideoOutputDelegate(this),DispatchQueue.MainQueue);
+          captureSession.AddOutput(videoOutput);
+    }
+
+    void ConfigureCameraForDevice (AVCaptureDevice device)
+		{
+			var error = new NSError ();
+			if (device.IsFocusModeSupported (AVCaptureFocusMode.ContinuousAutoFocus)) {
+				device.LockForConfiguration (out error);
+				device.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+				device.UnlockForConfiguration ();
+			} else if (device.IsExposureModeSupported (AVCaptureExposureMode.ContinuousAutoExposure)) {
+				device.LockForConfiguration (out error);
+				device.ExposureMode = AVCaptureExposureMode.ContinuousAutoExposure;
+				device.UnlockForConfiguration ();
+			} else if (device.IsWhiteBalanceModeSupported (AVCaptureWhiteBalanceMode.ContinuousAutoWhiteBalance)) {
+				device.LockForConfiguration (out error);
+				device.WhiteBalanceMode = AVCaptureWhiteBalanceMode.ContinuousAutoWhiteBalance;
+				device.UnlockForConfiguration ();
+			}
+		}
+
+        public class MyVideoOutputDelegate : AVCaptureVideoDataOutputSampleBufferDelegate
+        {
+            ScanViewController1 scanViewController1;
+        public  MyVideoOutputDelegate ( ScanViewController1 scanViewController1)
+        {
+        this.scanViewController1 = scanViewController1;
+        }
+        public override void DidOutputSampleBuffer(AVCaptureOutput output, CMSampleBuffer sampleBuffer, AVCaptureConnection connection)
+    {
+        var frame = sampleBuffer.GetImageBuffer();
+        if (frame == null)
+        {
+            Console.WriteLine("unable to get image from sample buffer");
+            return;
+        }
+       var barcode = scanViewController1.ExtractQRCode(frame);
+        if (barcode != null)
+        {
+            Console.WriteLine($"did extract barcode {barcode}");
+            // Uncomment to show alert
+            // var alert = UIAlertController.Create("Barcode", $"Value : {barcode}", UIAlertControllerStyle.Alert);
+            // alert.AddAction(UIAlertAction.Create("Ok", UIAlertActionStyle.Default, null));
+            // PresentViewController(alert, true, null);
+        }
+    }
+
+
+   
+
+        }
+}
