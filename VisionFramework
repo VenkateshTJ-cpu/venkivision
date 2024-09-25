@@ -1,0 +1,193 @@
+using System;
+using System.Drawing;
+using System.Reflection.Metadata.Ecma335;
+using AVFoundation;
+using CoreAnimation;
+using CoreFoundation;
+using CoreMedia;
+using CoreVideo;
+using Microsoft.VisualBasic;
+using UIKit;
+using Vision;
+using VisionBarcodeiOS;
+
+public class VisionScannerController : UIViewController//, IAVCaptureVideoDataOutputSampleBufferDelegate
+{
+    private readonly AVCaptureSession captureSession = new AVCaptureSession();
+    private readonly AVCaptureVideoPreviewLayer previewLayer;
+    private readonly AVCaptureVideoDataOutput videoOutput = new AVCaptureVideoDataOutput();
+    private readonly VNSequenceRequestHandler sequenceHandler = new VNSequenceRequestHandler();
+    public event BarcodeResult OnScanResult;
+    public delegate void BarcodeResult(BarcodeResultEventArgs e);
+    public VisionScannerController(Object CallingObject)
+    {
+        previewLayer = new AVCaptureVideoPreviewLayer(captureSession)
+        {
+            VideoGravity = AVLayerVideoGravity.ResizeAspect
+        };
+        if (CallingObject is FirstViewController)
+        {
+            var vc = CallingObject as FirstViewController;
+            this.OnScanResult -= vc.OnScanResult;
+            this.OnScanResult += vc.OnScanResult;
+        }
+
+    }
+
+    public override void ViewDidLoad()
+    {
+        base.ViewDidLoad();
+        AddCameraInput();
+        AddPreviewLayer();
+       //AddVideoOutput();
+AddMetaOutPut();
+        captureSession.StartRunning();
+
+    }
+
+    public override void ViewDidLayoutSubviews()
+    {
+        base.ViewDidLayoutSubviews();
+        previewLayer.Frame = View.Bounds;
+    }
+
+
+
+    private void ExtractQRCode(CVImageBuffer frame)
+    {
+        var barcodeRequest = new VNDetectBarcodesRequest((result, error) => { });
+
+
+        barcodeRequest.Symbologies = new[] { VNBarcodeSymbology.QR, VNBarcodeSymbology.Code39 };
+        NSError error;
+        try
+        {
+            sequenceHandler.Perform(new[] { barcodeRequest }, (CVPixelBuffer)frame, out error);
+           if(barcodeRequest.Results ==null || !barcodeRequest.Results.Any())
+             return;
+
+            var result = barcodeRequest?.Results.First().PayloadStringValue?.ToString();
+            OnScanResult?.Invoke(new BarcodeResultEventArgs() { barcodeValue = result, barcodeFormat = barcodeRequest.Results.First().Symbology.ToString() });
+            this.NavigationController?.PopViewController(true);
+            captureSession.StopRunning();
+            //   BeginInvokeOnMainThread(()=>resultLabel.Text = test);  
+          //  error.ToString();
+        }
+        catch(Exception ex)
+        {
+Console.WriteLine(ex.Message);
+        }
+        // var results = barcodeRequest.Results;
+        // return results != null && results.Length > 0 ? results[0].PayloadStringValue : null;
+    }
+
+    private void AddCameraInput()
+    {
+        var device = AVCaptureDevice.GetDefaultDevice(AVMediaTypes.Video);
+        ConfigureCameraForDevice(device);
+        var cameraInput = AVCaptureDeviceInput.FromDevice(device);
+        captureSession.AddInput(cameraInput);
+
+
+    }
+
+    private void AddPreviewLayer()
+    {
+        View.Layer.AddSublayer(previewLayer);
+        //   View.AddSubview(resultLabel);
+
+    }
+
+    private void AddVideoOutput()
+    {
+        var videoSettingsDict = new NSMutableDictionary();
+        videoSettingsDict.Add(CVPixelBuffer.PixelFormatTypeKey, NSNumber.FromUInt32((uint)CVPixelFormatType.CV32BGRA));
+        videoOutput.WeakVideoSettings = videoSettingsDict;
+        videoOutput.SetSampleBufferDelegate(new MyVideoOutputDelegate(this), DispatchQueue.MainQueue);
+        captureSession.AddOutput(videoOutput);
+    }
+
+    private void AddMetaOutPut()
+    {
+
+        var metadataOutput = new AVCaptureMetadataOutput();
+        var metadataDelegate = new MyMetadataOutputDelegate();
+        metadataOutput.SetDelegate(metadataDelegate, DispatchQueue.MainQueue);
+        captureSession.AddOutput(metadataOutput);
+
+        metadataOutput.MetadataObjectTypes = AVMetadataObjectType.QRCode | AVMetadataObjectType.EAN13Code;
+
+    }
+    void ConfigureCameraForDevice(AVCaptureDevice device)
+    {
+        var error = new NSError();
+        if (device.IsFocusModeSupported(AVCaptureFocusMode.ContinuousAutoFocus))
+        {
+            device.LockForConfiguration(out error);
+            device.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+            device.UnlockForConfiguration();
+        }
+        else if (device.IsExposureModeSupported(AVCaptureExposureMode.ContinuousAutoExposure))
+        {
+            device.LockForConfiguration(out error);
+            device.ExposureMode = AVCaptureExposureMode.ContinuousAutoExposure;
+            device.UnlockForConfiguration();
+        }
+        else if (device.IsWhiteBalanceModeSupported(AVCaptureWhiteBalanceMode.ContinuousAutoWhiteBalance))
+        {
+            device.LockForConfiguration(out error);
+            device.WhiteBalanceMode = AVCaptureWhiteBalanceMode.ContinuousAutoWhiteBalance;
+            device.UnlockForConfiguration();
+        }
+    }
+
+
+    public class MyMetadataOutputDelegate : AVCaptureMetadataOutputObjectsDelegate
+    {
+        public override void DidOutputMetadataObjects(AVCaptureMetadataOutput captureOutput, AVMetadataObject[] metadataObjects, AVCaptureConnection connection)
+        {
+            foreach (var m in metadataObjects)
+            {
+                if (m is AVMetadataMachineReadableCodeObject)
+                {
+                    MetadataFound(this, m as AVMetadataMachineReadableCodeObject);
+                }
+            }
+        }
+
+        public event EventHandler<AVMetadataMachineReadableCodeObject> MetadataFound = delegate { };
+    }
+
+    public class MyVideoOutputDelegate : AVCaptureVideoDataOutputSampleBufferDelegate
+    {
+        VisionScannerController visionScannerController;
+        public MyVideoOutputDelegate(VisionScannerController visionScannerController)
+        {
+            this.visionScannerController = visionScannerController;
+        }
+        public override void DidOutputSampleBuffer(AVCaptureOutput output, CMSampleBuffer sampleBuffer, AVCaptureConnection connection)
+        {
+            var frame = sampleBuffer.GetImageBuffer();
+            if (frame == null)
+            {
+                Console.WriteLine("unable to get image from sample buffer");
+                return;
+            }
+            visionScannerController.ExtractQRCode(frame);
+
+        }
+
+
+
+
+    }
+
+
+}
+public class BarcodeResultEventArgs : EventArgs
+{
+    public string barcodeValue;
+    public string barcodeFormat;
+
+    public int requestCode;
+}
